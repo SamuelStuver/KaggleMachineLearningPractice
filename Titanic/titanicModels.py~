@@ -1,0 +1,131 @@
+"""
+Columns:
+
+PassengerId - type should be integers
+Survived - Survived or Not
+Pclass - Class of Travel
+Name - Name of Passenger
+Sex - Gender
+Age - Age of Passengers
+SibSp - Number of Sibling/Spouse aboard
+Parch - Number of Parent/Child aboard
+Ticket
+Fare
+Cabin
+Embarked - The port in which a passenger has embarked. C - Cherbourg, S - Southampton, Q = Queenstown
+"""
+
+
+
+import pandas as pd
+import numpy as np
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.metrics import mean_absolute_error
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from tqdm import tqdm
+
+def getMAEDecisionTree(max_leaf_nodes, train_X, val_X, train_y, val_Y):
+    model = DecisionTreeRegressor(max_leaf_nodes=max_leaf_nodes, random_state=0)
+    model.fit(train_X, train_y)
+    preds_val = model.predict(val_X)
+    mae = mean_absolute_error(val_y, preds_val)
+    return mae
+
+def findBestTreeSize(NRange, train_X, val_X, train_y, val_y, verbose=False):
+    best_N = 0
+    current_smallest_mae = 0
+    print("Finding the best tree size for DecisionTreeRegressor...")
+    for N in tqdm(range(2, NRange)):
+        mae = getMAEDecisionTree(N, train_X, val_X, train_y, val_y)
+        if N == 2:
+            current_smallest_mae = mae
+        elif mae < current_smallest_mae:
+            current_smallest_mae = mae
+            best_N = N
+        if verbose:
+            print(N, mae, best_N, current_smallest_mae)
+
+    print("Best Tree Size: {}".format(best_N))
+    print("Smallest MAE: {}".format(current_smallest_mae))
+    return best_N
+
+def intReplace(data, replaceDict):
+    newData = data.copy() 
+    for i in range(len(data)):
+        if data[i] in replaceDict.keys():
+            newData[i] = replaceDict[data[i]]
+    return newData
+
+def ageReplace(data, maleIndices, femaleIndices, meanMaleAge, meanFemaleAge):
+    newData = data.copy()
+    for i in range(len(data)):
+        if pd.isnull(data['Age'][i]):
+            if i in maleIndices:
+                newData['Age'][i] = meanMaleAge
+            elif i in femaleIndices:
+                newData['Age'][i] = meanFemaleAge
+    return newData
+
+
+trainingData_path = 'train.csv'
+
+trainingData = pd.read_csv(trainingData_path)
+print(trainingData.columns)
+print(trainingData.describe())
+trainingDataOriginal = trainingData
+
+
+features = ['PassengerId','Pclass','Sex','Age','Parch','Fare','Embarked']
+
+trainingData = trainingData.replace({'Sex':{'male':1, 'female':0}})
+trainingData = trainingData.replace({'Embarked':{'C':0, 'S':1, 'Q':2}})
+trainingData = trainingData.dropna(subset=features)
+
+
+y = trainingData.Survived
+X = trainingData[features]
+
+train_X, val_X, train_y, val_y = train_test_split(X, y, random_state=0)
+
+#bestTreeSize = findBestTreeSize(50, train_X, val_X, train_y, val_y)
+
+#decisionTreeModel = DecisionTreeRegressor(max_leaf_nodes=bestTreeSize, random_state=0)
+#decisionTreeModel.fit(X, y)
+
+randomForestModel = RandomForestRegressor(random_state=0)
+randomForestModel.fit(X, y)
+
+# import test data
+
+testData = pd.read_csv('test.csv')
+testDataOriginal = testData
+testData = testData.replace({'Sex':{'male':1, 'female':0}})
+testData = testData.replace({'Embarked':{'C':0, 'S':1, 'Q':2}})
+#testData = testData.dropna(subset=features)
+maleIndices = testData.index[testData['Sex']==1].tolist()
+femaleIndices = testData.index[testData['Sex']==0].tolist()
+meanMaleAge = testData['Age'][maleIndices].mean()
+meanFemaleAge = testData['Age'][femaleIndices].mean()
+print(meanMaleAge, meanFemaleAge)
+
+for col in ['Pclass', 'Age', 'Parch', 'Fare']:
+    testData = testData.fillna(value={col:testData[col].mean()})
+
+# newTestData = ageReplace(testData, maleIndices, femaleIndices, meanMaleAge, meanFemaleAge)
+
+
+
+# predictions = list(map(int, decisionTreeModel.predict(testData[features]).round()))
+predictions = list(map(int, randomForestModel.predict(testData[features]).round()))
+print(len(testDataOriginal), len(predictions))
+
+predictionSeries = pd.DataFrame(data={'PassengerId':testData['PassengerId'],'Survived':predictions})
+
+print("PREDICTIONS:")
+print(predictionSeries)
+
+predictionSeries.to_csv('submission.csv', index=False)
+
+
+
